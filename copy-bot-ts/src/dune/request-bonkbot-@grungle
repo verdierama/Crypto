@@ -1,0 +1,105 @@
+/* Original code from https://dune.com/queries/3408335/5720925 */
+/* WSOLAddress: 'So11111111111111111111111111111111111111112' */
+/* FeeWallet: 'ZG98FUCjb8mJ824Gbs6RsgVmr1FhXb2oNiJHa2dwmPd' */
+/* FirstTradeTimestamp: TIMESTAMP '2023-08-17' */
+WITH
+  botTradesWithFees AS (
+    SELECT
+      block_time,
+      block_date,
+      amount_usd,
+      fee_usd,
+      --type,
+      project_contract_address,
+      user AS userAddress,
+      tx_hash AS tx_id
+    FROM
+      /* BonkBot Trades */
+      dune.unibot.result_dex_trading_bot_trades
+    WHERE
+      bot = 'BonkBot'
+      AND isLastTradeInTransaction = true -- This prevents over counting for multi-hop trades and excludes tax distributions 
+  ),
+  bonkReferralPayments AS (
+    SELECT
+      call_block_time AS block_time,
+      amount / 1e5 AS amountBONK,
+      account_destination AS destinationAccount,
+      token_balance_owner AS destinationAccountOwner,
+      call_tx_id AS tx_id
+    FROM
+      spl_token_solana.spl_token_call_transferChecked
+      LEFT JOIN solana_utils.token_accounts ON account_destination = address
+    WHERE
+      account_mint = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263' -- BONKAddress
+      AND account_authority = '84DGj4Qpypcaa5uxdzphYzkutEUTvxLWSuWq3BoJLxkp'
+      AND call_block_time >= TIMESTAMP '2023-08-17' -- FirstTradeTimestamp
+  ),
+  leaderboard AS (
+    SELECT
+      RANK() OVER (
+        ORDER BY
+          SUM(amount_usd) DESC
+      ) AS userRank,
+      SUM(amount_usd) AS totalVolumeUSD,
+      -- SUM(IF("type" = 'Buy', amount_usd, 0)) AS buyVolumeUSD,
+      -- SUM(IF("type" = 'Sell', amount_usd, 0)) AS sellVolumeUSD,
+      COUNT(DISTINCT (tx_id)) AS numberOfTrades,
+      COUNT(DISTINCT (project_contract_address)) AS numberOfPairs,
+      COUNT(DISTINCT (block_date)) AS numberOfActiveDays,
+      SUM(fee_usd) AS feesPaidUSD,
+      MIN(block_time) AS firstTradeDate,
+      MAX(block_time) AS lastTradeDate,
+      userAddress
+    FROM
+      botTradesWithFees
+    GROUP BY
+      userAddress
+  )
+SELECT
+  userRank,
+  userAddress AS user,
+  CONCAT(
+    '<a href="https://birdeye.so/profile/',
+    userAddress,
+    '?chain=solana" target=_blank">',
+    userAddress,
+    '</a>'
+  ) AS user_url,
+  totalVolumeUSD,
+  --buyVolumeUSD,
+  --sellVolumeUSD,
+  numberOfTrades,
+  numberOfPairs,
+  numberOfActiveDays,
+  SUM(amountBONK) AS referralRewardsBONK,
+  feesPaidUSD,
+  firstTradeDate,
+  lastTradeDate,
+  userAddress,
+  CONCAT(
+    '<a href="https://birdeye.so/profile/',
+    userAddress,
+    '?chain=solana" target=_blank">',
+    userAddress,
+    '</a>'
+  ) AS userAddress_url
+FROM
+  leaderboard
+  LEFT JOIN bonkReferralPayments ON userAddress = destinationAccountOwner
+  --LEFT OUTER JOIN solana_utils.sns_domains ON solana_utils.sns_domains.owner = leaderboard.userAddress
+GROUP BY
+  userRank,
+  userAddress,
+  totalVolumeUSD,
+  --buyVolumeUSD,
+  --sellVolumeUSD,
+  numberOfTrades,
+  numberOfPairs,
+  numberOfActiveDays,
+  feesPaidUSD,
+  firstTradeDate,
+  lastTradeDate,
+  userAddress
+ORDER BY
+  userRank ASC

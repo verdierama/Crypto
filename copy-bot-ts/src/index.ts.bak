@@ -1,0 +1,81 @@
+import * as https from 'https';
+import * as fs from 'fs';
+import * as http from 'http';
+
+console.log("Hello, World!");
+
+const options = {
+    key: fs.readFileSync('/home/ubuntu/copy-bot-ts/server.key'),
+    cert: fs.readFileSync('/home/ubuntu/copy-bot-ts/server.crt')
+};
+
+const serverhttp = http.createServer((req, res) => {
+    if (req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => {
+            body += chunk;
+        });
+        req.on('end', () => {
+            try {
+                const payload = JSON.parse(body);
+                // Handle the JSON payload here
+                console.log(payload);
+                res.statusCode = 200;
+                res.end('Webhook received successfully');
+            } catch (error) {
+                res.statusCode = 400;
+                res.end('Invalid JSON payload');
+            }
+        });
+    } else {
+        res.statusCode = 404;
+        res.end('Not Found');
+    }
+});
+
+const server = https.createServer(options, (req, res) => {
+    if (req.method === 'POST' && req.headers['content-type'] === 'application/json') {
+        let body = '';
+        req.on('data', (chunk) => {
+            body += chunk;
+        });
+        req.on('end', () => {
+            try {
+                const payload = JSON.parse(body);
+                // Handle the JSON payload here
+                console.log(payload);
+                res.statusCode = 200;
+                res.end('Webhook received successfully');
+            } catch (error) {
+                res.statusCode = 400;
+                res.end('Invalid JSON payload');
+            }
+        });
+    } else {
+        res.statusCode = 404;
+        res.end('Not Found');
+    }
+});
+
+server.on('error', (error) => {
+    console.error('Server error:', error);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled rejection at:', promise, 'reason:', reason);
+});
+/*
+server.listen(64444, () => {
+    console.log('Server listening on port 64444');
+});
+*/
+
+
+serverhttp.listen(64444, () => {
+    console.log('Server listening on port 64444');
+});
+

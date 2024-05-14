@@ -1,0 +1,87 @@
+-- From: https://dune.com/queries/3313123
+-- WSOLAddress: 'So11111111111111111111111111111111111111112'
+-- FeeWallet: HEPL5rTb6n1Ax6jt9z2XMPFJcDe9bSWvWQpsK7AMcbZg
+-- FirstTradeTimestamp: TIMESTAMP '2023-11-10'
+WITH
+  botTradesWithFees AS (
+    SELECT
+      block_time,
+      date_trunc('day', block_time) AS block_date,
+      amount_usd,
+      fee_usd,
+      type,
+      project_contract_address,
+      user AS userAddress,
+      tx_id
+    FROM
+      /* Sol Trading Bot Trades Trades */
+      query_3312800
+    WHERE
+      isLastTradeInTransaction = true -- This prevents over counting for multi-hop trades and excludes tax distributions 
+  ),
+  leaderboard AS (
+    SELECT
+      RANK() OVER (
+        ORDER BY
+          SUM(amount_usd) DESC
+      ) AS userRank,
+      SUM(amount_usd) AS totalVolumeUSD,
+      SUM(IF("type" = 'Buy', amount_usd, 0)) AS buyVolumeUSD,
+      SUM(IF("type" = 'Sell', amount_usd, 0)) AS sellVolumeUSD,
+      COUNT(DISTINCT (tx_id)) AS numberOfTrades,
+      COUNT(DISTINCT (project_contract_address)) AS numberOfPairs,
+      COUNT(DISTINCT (block_date)) AS numberOfActiveDays,
+      SUM(fee_usd) AS feesPaidUSD,
+      MIN(block_time) AS firstTradeDate,
+      MAX(block_time) AS lastTradeDate,
+      userAddress
+    FROM
+      botTradesWithFees
+    GROUP BY
+      userAddress
+  )
+SELECT
+  userRank,
+  userAddress AS user,
+  CONCAT(
+    '<a href="https://birdeye.so/profile/',
+    userAddress,
+    '?chain=solana" target=_blank">',
+    userAddress,
+    '</a>'
+  ) AS user_url,
+  totalVolumeUSD,
+  buyVolumeUSD,
+  sellVolumeUSD,
+  numberOfTrades,
+  numberOfPairs,
+  numberOfActiveDays,
+  feesPaidUSD,
+  firstTradeDate,
+  lastTradeDate,
+  userAddress,
+  CONCAT(
+    '<a href="https://birdeye.so/profile/',
+    userAddress,
+    '?chain=solana" target=_blank">',
+    userAddress,
+    '</a>'
+  ) AS userAddress_url
+FROM
+  leaderboard
+  --LEFT OUTER JOIN solana_utils.sns_domains ON solana_utils.sns_domains.owner = leaderboard.userAddress
+GROUP BY
+  userRank,
+  userAddress,
+  totalVolumeUSD,
+  buyVolumeUSD,
+  sellVolumeUSD,
+  numberOfTrades,
+  numberOfPairs,
+  numberOfActiveDays,
+  feesPaidUSD,
+  firstTradeDate,
+  lastTradeDate,
+  userAddress
+ORDER BY
+  userRank ASC
